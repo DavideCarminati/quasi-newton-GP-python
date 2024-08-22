@@ -1,50 +1,65 @@
 import numpy as np
+import numpy.typing as npt
+import scipy
+from scipy import signal
+import scipy.linalg
+import scipy.signal
 
 # I need scipy signals for lsim method!!!
 
-# m = 1;
-# k = 1;
-# b = 0.2;
+class System:
+    def __init__(self) -> None:
+        
+        m = 1
+        k = 1
+        b = 0.2
+        self.A = np.array([[0, 1], [-k/m, -b/m]])
+        self.B = np.array([0, 1/m])
+        self.C = np.array([1, 0])
+        self.D = np.array([0])
 
-# A = [0 1; -k/m -b/m];
-# B = [0 1/m]';
-# C = [1 0];
-# D = [0];
+        # self.st_dev_noise = np.sqrt(1e-3)
+        # self.lengthscale = 1.5
 
-# sys = ss(A,B,C,D);
+        self.dynamical_sys = scipy.signal.lti(self.A, self.B, self.C, self.D)
 
-# TRAIN_POINTS = 1000;
-# time = linspace(0, 15, TRAIN_POINTS);
-# u_vet = zeros(size(time));
-# % Integration
-# [y_noiseless,times,x] = lsim(sys,u_vet,time, [1; 0]);
+    def simulate(self, time_steps=1000, t_end=15, st_dev_noise=0.0) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
 
-# % Add sensor noise
-# st_dev_noise = sqrt(1e-3);
-# y = y_noiseless + st_dev_noise * randn(length(x), 1);
+        self.time_steps = time_steps
+        time = np.linspace(0, t_end, self.time_steps)
+        u_vet = np.zeros(self.time_steps)
+        # Integration
+        [self.y_noiseless, self.times, self.x] = scipy.signal.lsim(self.dynamical_sys, u_vet, time, X0=[1, 0])
 
-# %% Define SDE matrices using Matern 3/2 kernel
+        # Add sensor noise
+        self.y = self.y_noiseless + st_dev_noise * np.random.randn(self.time_steps)
 
-# variance = st_dev_noise^2;
-# lengthscale = 1.5;        % Cambiare questa!!!
-# % kernel_to_state_space(self, R=None):
-# lam = 3.0 ^ 0.5 / lengthscale;
-# F = [0.0, 1.0;
-#     -lam ^ 2, -2 * lam];
-# L = [0; 1];
-# % Q = [12.0 * 3.0 ^ 0.5 / lengthscale ^ 3.0 * variance]; % Actually this is spectral density of beta. We need Qn
-# H = [1.0, 0.0];
-# Pinf = [variance, 0.0;
-#         0.0, 3.0 * variance / lengthscale ^ 2.0];
-# P0 = Pinf;
-# % state_transition(self, dt):
+        return self.y, self.y_noiseless, self.times, self.x
     
-# %     Calculation of the discrete-time state transition matrix A = expm(FΔt) for the Matern-3/2 prior.
-# %     :param dt: step size(s), Δtₙ = tₙ - tₙ₋₁ [scalar]
-# %     :return: state transition matrix A [2, 2]
-    
-# lam = sqrt(3.0) / lengthscale;
-# dt = times(2) - times(1);
-# A = expm(-dt * lam) * (dt * [lam, 1.0; -lam^2.0, -lam] + eye(2));
+    def matern32_to_lti(self, hyperparameters: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        # Define SDE matrices using Matern 3/2 kernel
 
-# Q = Pinf - A * Pinf * A';
+        self.lengthscale = hyperparameters[0]**2
+        self.variance = hyperparameters[1]**2
+        
+        lam = 3.0**0.5 / self.lengthscale
+        F = np.array([[0.0, 1.0],
+            [-lam**2, -2 * lam]])
+        L = np.array([0, 1])
+        # Q = [12.0 * 3.0 ^ 0.5 / lengthscale ^ 3.0 * variance]; % Actually this is spectral density of beta. We need Qn
+        H = np.array([1.0, 0.0])
+        Pinf = np.array([[self.variance, 0.0],
+                [0.0, 3.0 * self.variance / self.lengthscale**2.0]])
+        P0 = Pinf
+        # state_transition(self, dt):
+            
+        #     Calculation of the discrete-time state transition matrix A = expm(FΔt) for the Matern-3/2 prior.
+        #     :param dt: step size(s), Δtₙ = tₙ - tₙ₋₁ [scalar]
+        #     :return: state transition matrix A [2, 2]
+
+        dt = self.times[1] - self.times[0]
+        A = np.array(scipy.linalg.expm(-dt * lam) * (dt * [[lam, 1.0], [-lam^2.0, -lam]] + np.identity(2)))
+
+        Q = Pinf - A @ Pinf @ A.T
+
+        return A, H, P0, Pinf, Q

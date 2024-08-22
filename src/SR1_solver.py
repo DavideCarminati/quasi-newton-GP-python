@@ -5,7 +5,10 @@ from torch import autograd
 
 
 class SR1_solver:
-    def __init__(self, N: int) -> None:
+    def __init__(self, N: int, cost_function: object, jacobian: object) -> None:
+
+        self.cost_fun = cost_function
+        self.jacobian = jacobian
         # Initialize solver parameters to default
         self.iter = 0
         self.func_count = 0
@@ -20,7 +23,7 @@ class SR1_solver:
         self.solution = np.random.randn(self.N)
         self.candidate_solution = np.zeros(self.N)
 
-    def step_solver(self, f: float, df: npt.NDArray) -> None:
+    def compute_candidate_solution(self, f: float, df: npt.NDArray) -> None:
         self.df = df
         self.f = f
         eps_tol = min(0.5, np.sqrt(np.linalg.norm(df))) * np.linalg.norm(df)
@@ -108,4 +111,12 @@ class SR1_solver:
         condition_on_B = abs(self.delta_solution.T @ (self.yk - self.B @ self.delta_solution)) >= 1e-8 * np.linalg.norm(self.delta_solution) * np.linalg.norm(self.yk - self.B @ self.delta_solution)
         if condition_on_B:
             self.B = self.B + (self.yk - self.B @ self.delta_solution) @ (self.yk - self.B @ self.delta_solution).T / ( (self.yk - self.B @ self.delta_solution).T * self.delta_solution)
+
+    # def step_forward(self):
+    #     # Perform one step forward
+    #     # Evaluate function and its derivatives with autograd -- Why not JAX? https://jax.readthedocs.io/en/latest/automatic-differentiation.html#computing-gradients-in-a-linear-logistic-regression
+    #     jacobian = autograd.
+    #     self.compute_candidate_solution(f, df)
+    #     # Compute cost fun values and derivatives using candidate sol
+    #     self.update_solution
         
