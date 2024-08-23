@@ -1,14 +1,16 @@
 import numpy as np
 import numpy.typing as npt
 import torch
-from torch import autograd
+# from torch import autograd
+from autograd import grad, value_and_grad
 
 
 class SR1_solver:
-    def __init__(self, N: int, cost_function: object, jacobian: object) -> None:
-
-        self.cost_fun = cost_function
-        self.jacobian = jacobian
+    # def __init__(self, N: int, cost_function: object, diff_wrt: list[int] = []) -> None:
+    def __init__(self, N: int) -> None: # cost_function: object, diff_wrt: list[int] = []) -> None:
+        
+        # self.diff_wrt = diff_wrt
+        # self.cost_fun = cost_function
         # Initialize solver parameters to default
         self.iter = 0
         self.func_count = 0
@@ -112,11 +114,43 @@ class SR1_solver:
         if condition_on_B:
             self.B = self.B + (self.yk - self.B @ self.delta_solution) @ (self.yk - self.B @ self.delta_solution).T / ( (self.yk - self.B @ self.delta_solution).T * self.delta_solution)
 
-    # def step_forward(self):
-    #     # Perform one step forward
-    #     # Evaluate function and its derivatives with autograd -- Why not JAX? https://jax.readthedocs.io/en/latest/automatic-differentiation.html#computing-gradients-in-a-linear-logistic-regression
-    #     jacobian = autograd.
-    #     self.compute_candidate_solution(f, df)
-    #     # Compute cost fun values and derivatives using candidate sol
-    #     self.update_solution
+    def step_forward(self, **kwargs) -> tuple[npt.NDArray, npt.NDArray]:
+        # Perform one step forward. *args are cost fun arguments to be directly passed
+        # Evaluate function and its derivatives with autograd -- Why not JAX? https://jax.readthedocs.io/en/latest/automatic-differentiation.html#computing-gradients-in-a-linear-logistic-regression
+
+        # diff_wrt is the position of the argument to be differentiated to
+        self.cost_fun = kwargs.get('cost_function', None)       # Must be a lambda fun where the only inputa arg is the variable to be diff to
+        self.cost_fun_and_deriv = kwargs.get('cost_fun_value_and_derivative', None) # This is an object fun that returns its value and derivatives
+        self.diff_wrt = kwargs.get('diff_wrt', None)
+
+        if self.cost_fun is not None:
+            # A lambda function is provided. It must be autodiff'd to compute its derivatives
+            if self.diff_wrt is None:
+                raise Exception("Specify which argument parameter to diff to")
+            
+            # Per dopo
+            value, jacobian = value_and_grad(self.cost_fun, self.diff_wrt)
+            self.compute_candidate_solution(value(self.solution), jacobian(self.solution))
+            # Compute cost fun values and derivatives using candidate sol
+            self.update_solution(value(self.candidate_solution), jacobian(self.candidate_solution))
+
+        elif self.cost_fun_and_deriv is not None:
+            # I have numerical values of fun and its der
+            f = self.cost_fun_and_deriv(self.solution)
+            df = self.cost_fun_and_deriv(self.solution)
+            self.compute_candidate_solution(f, df)
+            # Compute cost fun values and derivatives using candidate sol
+            f_tmp = self.cost_fun_and_deriv(self.candidate_solution)
+            df_tmp = self.cost_fun_and_deriv(self.candidate_solution)
+            self.update_solution(f_tmp, df_tmp)
+
+        else:
+            raise Exception("Check constructor arguments")
+        
+        # Update Trust Region radius
+        self.update_radius()
+        # FInally update the approximate Hessian
+        self.update_hessian()
+
+        return self.solution, self.B
         

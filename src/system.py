@@ -14,8 +14,8 @@ class System:
         k = 1
         b = 0.2
         self.A = np.array([[0, 1], [-k/m, -b/m]])
-        self.B = np.array([0, 1/m])
-        self.C = np.array([1, 0])
+        self.B = np.array([[0, 1/m]]).T
+        self.C = np.array([[1, 0]])
         self.D = np.array([0])
 
         # self.st_dev_noise = np.sqrt(1e-3)
@@ -29,7 +29,7 @@ class System:
         time = np.linspace(0, t_end, self.time_steps)
         u_vet = np.zeros(self.time_steps)
         # Integration
-        [self.y_noiseless, self.times, self.x] = scipy.signal.lsim(self.dynamical_sys, u_vet, time, X0=[1, 0])
+        [self.times, self.y_noiseless, self.x] = scipy.signal.lsim(self.dynamical_sys, u_vet, time, X0=[1, 0])
 
         # Add sensor noise
         self.y = self.y_noiseless + st_dev_noise * np.random.randn(self.time_steps)
@@ -58,7 +58,8 @@ class System:
         #     :return: state transition matrix A [2, 2]
 
         dt = self.times[1] - self.times[0]
-        A = np.array(scipy.linalg.expm(-dt * lam) * (dt * [[lam, 1.0], [-lam^2.0, -lam]] + np.identity(2)))
+        A_tmp = np.array([[lam, 1.0], [-lam**2.0, -lam]])
+        A = np.array(scipy.linalg.expm(-dt * lam) * (dt * A_tmp + np.identity(2)))
 
         Q = Pinf - A @ Pinf @ A.T
 
