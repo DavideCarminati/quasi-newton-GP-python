@@ -29,23 +29,24 @@ class SR1_solver:
         self.df = df
         self.f = f
         eps_tol = min(0.5, np.sqrt(np.linalg.norm(df))) * np.linalg.norm(df)
-        z = np.zeros([self.N, 1])
+        z = np.zeros(self.N)
         r = np.array(df)
         d = -r
         subproblem_iter = 0
-        self.delta_solution = np.zeros([self.N, 1])
+        self.delta_solution = np.zeros(self.N)
 
         while subproblem_iter < 5:
             min_fun = np.inf
             if d.T @ self.B @ d <= 0:
                 fun = lambda tau : df.T @ (z + tau * d) + 0.5 * (z + tau * d).T @ self.B @ (z + tau * d)
-                polyn = np.array([ d.T * d, 2 * d.T * z, z.T * z - self.radius**2 ])
+                polyn = np.array([ d.T @ d, 2 * d.T @ z, z.T @ z - self.radius**2 ])
     #                 tau_sol = real(roots(polyn))
-                tau_sol = np.real( (-polyn[2] + np.sqrt(polyn[2]**2 - 4 * polyn[1] * polyn[3])) / (2 * polyn[1]) )
-                for ii in range(np.size(tau_sol)):
-                    if fun(tau_sol(ii)) < min_fun:
-                        tau_min = tau_sol(ii)
-                        min_fun = fun(tau_sol(ii))
+                tau_sol = np.real( (-polyn[1] + np.sqrt(polyn[1]**2 - 4 * polyn[0] * polyn[2])) / (2 * polyn[0]) )
+                tau_min = tau_sol
+                # for ii in range(np.size(tau_sol)):
+                #     if fun(tau_sol(ii)) < min_fun:
+                #         tau_min = tau_sol(ii)
+                #         min_fun = fun(tau_sol(ii))
 
                 self.delta_solution = z + tau_min * d
                 subp_status = 'Negative curvature {' + str(subproblem_iter) + '}'
@@ -54,18 +55,18 @@ class SR1_solver:
     #             B = eye(TRAIN_POINTS)
                 break
             
-            alpha = r.T * r / (d.T * self.B * d)
+            alpha = r.T @ r / (d.T @ self.B @ d)
             z = z + alpha * d
             if np.linalg.norm(z) > self.radius:
     #             fun = @(tau) df' * (z + tau * d) + 0.5 * (z + tau * d)' * B * (z + tau * d)
-                polyn = np.array([ d.T * d, 2 * d.T * z, z.T * z - self.radius**2 ])
-                tau_sol = np.real( (-polyn[2] + np.sqrt(polyn[2]**2 - 4 * polyn[1] * polyn[3])) / (2 * polyn[1]) )
+                polyn = np.array([ d.T @ d, 2 * d.T @ z, z.T @ z - self.radius**2 ])
+                tau_sol = np.real( (-polyn[1] + np.sqrt(polyn[1]**2 - 4 * polyn[0] * polyn[2])) / (2 * polyn[0]) )
                 self.delta_solution = z + max(tau_sol) * d
 
                 subp_status = 'z beyond boundary {' + str(subproblem_iter) + '}'
                 break
             
-            r_new = r + alpha * self.B * d
+            r_new = r + alpha * self.B @ d
             if np.linalg.norm(r_new) < eps_tol:
                 self.delta_solution = z
                 subp_status = 'Degenerated in Newton method {' + str(subproblem_iter) + '}'
@@ -129,19 +130,21 @@ class SR1_solver:
                 raise Exception("Specify which argument parameter to diff to")
             
             # Per dopo
-            value, jacobian = value_and_grad(self.cost_fun, self.diff_wrt)
-            self.compute_candidate_solution(value(self.solution), jacobian(self.solution))
+            autodiff_fun = value_and_grad(self.cost_fun, self.diff_wrt)
+            value, jacobian = autodiff_fun(self.solution)
+            self.compute_candidate_solution(value, jacobian)
             # Compute cost fun values and derivatives using candidate sol
-            self.update_solution(value(self.candidate_solution), jacobian(self.candidate_solution))
+            candidate_value, candidate_jacobian = autodiff_fun(self.candidate_solution)
+            self.update_solution(candidate_value, candidate_jacobian)
 
         elif self.cost_fun_and_deriv is not None:
             # I have numerical values of fun and its der
-            f = self.cost_fun_and_deriv(self.solution)
-            df = self.cost_fun_and_deriv(self.solution)
+            f, df = self.cost_fun_and_deriv(self.solution)
+            # df = self.cost_fun_and_deriv(self.solution)
             self.compute_candidate_solution(f, df)
             # Compute cost fun values and derivatives using candidate sol
-            f_tmp = self.cost_fun_and_deriv(self.candidate_solution)
-            df_tmp = self.cost_fun_and_deriv(self.candidate_solution)
+            f_tmp, df_tmp = self.cost_fun_and_deriv(self.candidate_solution)
+            # df_tmp = self.cost_fun_and_deriv(self.candidate_solution)
             self.update_solution(f_tmp, df_tmp)
 
         else:

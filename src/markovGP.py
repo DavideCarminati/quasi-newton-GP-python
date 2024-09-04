@@ -6,6 +6,7 @@ import scipy.stats
 from scipy.stats import norm
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.graph_objs.scatter import Line
 
 import utils
 from SR1_solver import SR1_solver
@@ -62,8 +63,8 @@ class MarkovGP:
 
         # Initialize plot
         self.fig = go.Figure()
-        self.fig.add_trace(go.Line(x=time, y=self.y_hat, name='Estimated'))
-        self.fig.add_trace(go.Line(x=time, y=self.y, name='Real'))
+        self.fig.add_trace(go.Scatter(x=time, y=self.y_hat, name='Estimated', mode='lines'))
+        self.fig.add_trace(go.Scatter(x=time, y=self.y, name='Real', mode='lines'))
         self.fig.show()
         
 
@@ -72,7 +73,7 @@ class MarkovGP:
         le = 0.0
         self.m_x = np.random.randn(self.time_steps, 2)
         self.P_x[:,:,0] = self.P0
-        for t in range(2, self.time_steps):
+        for t in range(1, self.time_steps):
             self.m_x[t, :] = self.A @ self.m_x[t-1, :].T      # m_n short bar in the paper
             self.P_x[:, :, t] = self.A @ self.P_x[:,:,t-1] @ self.A.T + self.Q
             
@@ -84,14 +85,14 @@ class MarkovGP:
             le = le - np.log(norm.pdf(self.m_bar[t], self.H @ self.m_x[t, :].T, self.variance)) + np.log(norm.pdf(self.H @ self.m_x[t, :].T, self.m_bar[t], self.C_bar[t, t])) - logZ
         
             V = self.H @ self.P_x[:, :, t] @ self.H.T + self.C_bar[t,t]
-            W = self.P_x[:, :, t] @ self.H.T @ inv(V)
-            self.m_x[t, :] = self.m_x[t, :].T + W @ (self.m_bar[t] - self.H @ self.m_x[t,:].T)
-            self.P_x[:, :, t] = self.P_x[:, :, t] - W @ V @ W.T
+            W = self.P_x[:, :, t] @ self.H.T / V # Sarebbe @ inv(V) ma è una matrice 1x1
+            self.m_x[t, :] = self.m_x[t, :].T + W * (self.m_bar[t] - self.H @ self.m_x[t,:].T) # Bello sto numpy @ (self.m_bar[t] - self.H @ self.m_x[t,:].T)
+            self.P_x[:, :, t] = self.P_x[:, :, t] - V * W @ W.T # W @ V @ W.T
 
     def smoother(self):
         self.x_hat = self.m_x
         self.P_hat = self.P_x
-        for t in range(self.time_steps-1, 0, -1):
+        for t in range(self.time_steps-2, -1, -1):
             G = self.P_x[:, :, t] @ self.A @ inv(self.P_x[:, :, t])
             R = self.A @ self.P_x[:, :, t] @ self.A.T + self.Q
             self.m_x[t, :] = self.m_x[t, :].T + G @ (self.m_x[t+1,:].T - self.A @ self.m_x[t,:].T)
@@ -110,7 +111,7 @@ class MarkovGP:
         
         # Stepping with a certain learning rate
         self.nat_param_bar_2 = (1 - self.lr) * self.nat_param_bar_2 + self.lr * 0.5 * self.B
-        self.nat_param_bar_1 = (1 - self.lr) * self.nat_param_bar_1 + self.lr * (df - self.B * self.y_hat)
+        self.nat_param_bar_1 = (1 - self.lr) * self.nat_param_bar_1 + self.lr * (df - self.B @ self.y_hat)
         
         # Convert approximate likelihood natural parametrs back to mean and
         # covariance
@@ -120,7 +121,7 @@ class MarkovGP:
     def surrogate_fun(self, f: npt.NDArray, y: npt.NDArray, variance: float) -> tuple[float, npt.NDArray]:
         # The surrogate function in this case is the log Likelihood function and its derivative wrt f
         # m is m_(k,n) in the paper
-        out = np.sum( 0.5 * (-np.log(variance) + (y - f) / variance * (y - f) - np.log(2 * np.pi)) )
+        out = np.sum( 0.5 * (-np.log(variance) + (y - f) / variance * (y - f) - np.log(2 * np.pi)), axis=None )
         # dout = zeros(length(y), 1);
         dout_df = -2 * (y - f) * variance
         return out, dout_df
@@ -128,7 +129,7 @@ class MarkovGP:
     def symmetric_rank1_update(self):
         # Update matrix B using SR1
         LogLH = lambda x : self.surrogate_fun(x, self.y, self.variance)
-        _, self.B = self.KF_solver.step_forward(cost_function=LogLH, diff_wrt=0)
+        _, self.B = self.KF_solver.step_forward(cost_fun_value_and_derivative=LogLH)
 
     def run(self):
         self.filter()

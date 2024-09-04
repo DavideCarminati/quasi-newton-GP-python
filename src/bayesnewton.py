@@ -17,6 +17,11 @@ def main():
     fig = px.line(x=times, y=y)
     fig.show()
 
+    mgp = markovGP.MarkovGP(time=times, observation=y, A=A, H=H, P0=P0, Pinf=Pinf, Q=Q, hyperparameters=hyperparams)
+
+    for _ in range(10):
+        mgp.run()
+
 
 if __name__ == "__main__":
     main()
