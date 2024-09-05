@@ -22,10 +22,10 @@ class SR1_solver:
 
         self.N = N
         self.B = np.identity(self.N)
-        self.solution = np.random.randn(self.N)
+        # self.solution = np.zeros(self.N)
         self.candidate_solution = np.zeros(self.N)
 
-    def compute_candidate_solution(self, f: float, df: npt.NDArray) -> None:
+    def compute_candidate_solution(self, current_solution: npt.NDArray, f: float, df: npt.NDArray) -> None:
         self.df = df
         self.f = f
         eps_tol = min(0.5, np.sqrt(np.linalg.norm(df))) * np.linalg.norm(df)
@@ -61,7 +61,7 @@ class SR1_solver:
     #             fun = @(tau) df' * (z + tau * d) + 0.5 * (z + tau * d)' * B * (z + tau * d)
                 polyn = np.array([ d.T @ d, 2 * d.T @ z, z.T @ z - self.radius**2 ])
                 tau_sol = np.real( (-polyn[1] + np.sqrt(polyn[1]**2 - 4 * polyn[0] * polyn[2])) / (2 * polyn[0]) )
-                self.delta_solution = z + max(tau_sol) * d
+                self.delta_solution = z + tau_sol * d
 
                 subp_status = 'z beyond boundary {' + str(subproblem_iter) + '}'
                 break
@@ -80,7 +80,7 @@ class SR1_solver:
             subproblem_iter = subproblem_iter + 1
         
 
-        self.candidate_solution = self.solution + self.delta_solution # Candidate next solution
+        self.candidate_solution = current_solution + self.delta_solution # Candidate next solution
 
     def update_solution(self, candidate_f: float, candidate_df: npt.NDArray) -> None:
         # Compute candidate function value and its derivative using self.candidate_solution...
@@ -115,7 +115,7 @@ class SR1_solver:
         if condition_on_B:
             self.B = self.B + (self.yk - self.B @ self.delta_solution) @ (self.yk - self.B @ self.delta_solution).T / ( (self.yk - self.B @ self.delta_solution).T * self.delta_solution)
 
-    def step_forward(self, **kwargs) -> tuple[npt.NDArray, npt.NDArray]:
+    def step_forward(self, current_solution: npt.NDArray, **kwargs) -> tuple[npt.NDArray, npt.NDArray]:
         # Perform one step forward. *args are cost fun arguments to be directly passed
         # Evaluate function and its derivatives with autograd -- Why not JAX? https://jax.readthedocs.io/en/latest/automatic-differentiation.html#computing-gradients-in-a-linear-logistic-regression
 
@@ -131,17 +131,17 @@ class SR1_solver:
             
             # Per dopo
             autodiff_fun = value_and_grad(self.cost_fun, self.diff_wrt)
-            value, jacobian = autodiff_fun(self.solution)
-            self.compute_candidate_solution(value, jacobian)
+            value, jacobian = autodiff_fun(current_solution)
+            self.compute_candidate_solution(current_solution, value, jacobian)
             # Compute cost fun values and derivatives using candidate sol
             candidate_value, candidate_jacobian = autodiff_fun(self.candidate_solution)
             self.update_solution(candidate_value, candidate_jacobian)
 
         elif self.cost_fun_and_deriv is not None:
             # I have numerical values of fun and its der
-            f, df = self.cost_fun_and_deriv(self.solution)
+            f, df = self.cost_fun_and_deriv(current_solution)
             # df = self.cost_fun_and_deriv(self.solution)
-            self.compute_candidate_solution(f, df)
+            self.compute_candidate_solution(current_solution, f, df)
             # Compute cost fun values and derivatives using candidate sol
             f_tmp, df_tmp = self.cost_fun_and_deriv(self.candidate_solution)
             # df_tmp = self.cost_fun_and_deriv(self.candidate_solution)

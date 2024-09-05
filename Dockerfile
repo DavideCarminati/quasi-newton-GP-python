@@ -10,7 +10,7 @@ ENV PYTHONUNBUFFERED=1
 # Install pip requirements
 RUN apt-get update -y
 # RUN apt install -y python3-pip
-RUN conda install numpy pytest plotly scipy autograd jax matplotlib pandas ipykernel
+RUN conda install numpy pytest plotly scipy autograd jax matplotlib pandas ipykernel nbformat>=4.2.0 python-kaleido
 
 WORKDIR /app
 COPY . /app

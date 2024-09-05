@@ -7,9 +7,13 @@ from scipy.stats import norm
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.graph_objs.scatter import Line
+import plotly.io as pio
+import time as tm
 
 import utils
 from SR1_solver import SR1_solver
+
+# pio.renderers.default = "svg"
 
 
 class MarkovGP:
@@ -31,12 +35,12 @@ class MarkovGP:
         self.P0 = np.array(P0)
         self.Pinf = np.array(Pinf)
         self.Q = np.array(Q)
-        self.m_x = np.zeros([self.N, 2])
-        self.P_x = np.zeros([2, 2, self.N])
+        self.m_x = np.random.rand(self.N, 2)
+        self.P_x = np.zeros((2, 2, self.N))
 
         self.time_steps = np.size(observation)
 
-        self.lengthscale = hyperparameters[0]**2
+        self.lengthscale = hyperparameters[0]
         self.variance = hyperparameters[1]**2
         self.m_bar = observation
         self.C_bar = np.identity(self.time_steps) * self.variance
@@ -46,6 +50,7 @@ class MarkovGP:
 
         # Natural parameters
         self.nat_param_bar_1 = inv(self.C_bar) @ self.m_bar
+        # self.nat_param_bar_1 = 1 / self.variance * self.m_bar
         self.nat_param_bar_2 = -0.5 * inv(self.C_bar)
 
         # Learning rate
@@ -66,12 +71,15 @@ class MarkovGP:
         self.fig.add_trace(go.Scatter(x=time, y=self.y_hat, name='Estimated', mode='lines'))
         self.fig.add_trace(go.Scatter(x=time, y=self.y, name='Real', mode='lines'))
         self.fig.show()
+        tm.sleep(0.5)
         
 
     def filter(self):
+        # Results are slightly different from matlab!!!
         logZ = 0.0
         le = 0.0
         self.m_x = np.random.randn(self.time_steps, 2)
+        self.m_x[0, :] = [1, 0]
         self.P_x[:,:,0] = self.P0
         for t in range(1, self.time_steps):
             self.m_x[t, :] = self.A @ self.m_x[t-1, :].T      # m_n short bar in the paper
@@ -85,8 +93,8 @@ class MarkovGP:
             le = le - np.log(norm.pdf(self.m_bar[t], self.H @ self.m_x[t, :].T, self.variance)) + np.log(norm.pdf(self.H @ self.m_x[t, :].T, self.m_bar[t], self.C_bar[t, t])) - logZ
         
             V = self.H @ self.P_x[:, :, t] @ self.H.T + self.C_bar[t,t]
-            W = self.P_x[:, :, t] @ self.H.T / V # Sarebbe @ inv(V) ma è una matrice 1x1
-            self.m_x[t, :] = self.m_x[t, :].T + W * (self.m_bar[t] - self.H @ self.m_x[t,:].T) # Bello sto numpy @ (self.m_bar[t] - self.H @ self.m_x[t,:].T)
+            W = np.expand_dims(self.P_x[:, :, t] @ self.H.T / V, axis=-1) # Sarebbe @ inv(V) ma è una matrice 1x1
+            self.m_x[t, :] = self.m_x[t, :].T + np.squeeze(W) * (self.m_bar[t] - self.H @ self.m_x[t,:].T) # Bello sto numpy @ (self.m_bar[t] - self.H @ self.m_x[t,:].T)
             self.P_x[:, :, t] = self.P_x[:, :, t] - V * W @ W.T # W @ V @ W.T
 
     def smoother(self):
@@ -103,6 +111,7 @@ class MarkovGP:
             self.P_hat[:, :, t] = self.P_x[:, :, t]
         
         self.y_hat = (self.H @ self.x_hat.T).T  # this is m_n
+        # self.y_hat = (self.H @ self.m_x.T).T
 
     def update_nat_params(self):
         # Update the approximate likelihood by computing Jacobian and Hessian
@@ -118,7 +127,7 @@ class MarkovGP:
         self.C_bar = -0.5 * inv(self.nat_param_bar_2)
         self.m_bar = self.C_bar @ self.nat_param_bar_1
 
-    def surrogate_fun(self, f: npt.NDArray, y: npt.NDArray, variance: float) -> tuple[float, npt.NDArray]:
+    def surrogate_fun(self, y: npt.NDArray, f: npt.NDArray, variance: float) -> tuple[float, npt.NDArray]:
         # The surrogate function in this case is the log Likelihood function and its derivative wrt f
         # m is m_(k,n) in the paper
         out = np.sum( 0.5 * (-np.log(variance) + (y - f) / variance * (y - f) - np.log(2 * np.pi)), axis=None )
@@ -128,8 +137,8 @@ class MarkovGP:
     
     def symmetric_rank1_update(self):
         # Update matrix B using SR1
-        LogLH = lambda x : self.surrogate_fun(x, self.y, self.variance)
-        _, self.B = self.KF_solver.step_forward(cost_fun_value_and_derivative=LogLH)
+        LogLH = lambda x : self.surrogate_fun(self.y, x, self.variance)
+        _, self.B = self.KF_solver.step_forward(self.y_hat, cost_fun_value_and_derivative=LogLH)
 
     def run(self):
         self.filter()
@@ -137,6 +146,10 @@ class MarkovGP:
         self.update_nat_params()
         # self.update_plot()
         self.symmetric_rank1_update()
+
+        self.fig.update_traces(y=self.y_hat, selector = ({'name':'Estimated'}))
+        self.fig.show()
+        tm.sleep(1)
 
 
     def laplace_energy(self):

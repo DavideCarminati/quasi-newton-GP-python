@@ -39,7 +39,7 @@ class System:
     def matern32_to_lti(self, hyperparameters: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         # Define SDE matrices using Matern 3/2 kernel
 
-        self.lengthscale = hyperparameters[0]**2
+        self.lengthscale = hyperparameters[0]
         self.variance = hyperparameters[1]**2
         
         lam = 3.0**0.5 / self.lengthscale
