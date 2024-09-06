@@ -13,7 +13,8 @@ import plotly.io as pio
 
 def main():
     dyn_sys = system.System()
-    y, y_noiseless, times, x = dyn_sys.simulate(st_dev_noise=np.sqrt(1e-3)*0)
+    y, y_noiseless, times, x = dyn_sys.simulate(st_dev_noise=np.sqrt(1e-3))
+    # hyperparams = np.array([1.5, np.sqrt(1e-3)])
     hyperparams = np.array([1.5, np.sqrt(1e-3)])
     A, H, P0, Pinf, Q = dyn_sys.matern32_to_lti(hyperparameters=hyperparams)
 

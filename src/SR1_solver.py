@@ -124,13 +124,15 @@ class SR1_solver:
         self.cost_fun_and_deriv = kwargs.get('cost_fun_value_and_derivative', None) # This is an object fun that returns its value and derivatives
         self.diff_wrt = kwargs.get('diff_wrt', None)
 
+        self.solution = current_solution
+
         if self.cost_fun is not None:
             # A lambda function is provided. It must be autodiff'd to compute its derivatives
-            if self.diff_wrt is None:
-                raise Exception("Specify which argument parameter to diff to")
+            # if self.diff_wrt is None:
+            #     raise Exception("Specify which argument parameter to diff to")
             
             # Per dopo
-            autodiff_fun = value_and_grad(self.cost_fun, self.diff_wrt)
+            autodiff_fun = value_and_grad(self.cost_fun)#, self.diff_wrt)
             value, jacobian = autodiff_fun(current_solution)
             self.compute_candidate_solution(current_solution, value, jacobian)
             # Compute cost fun values and derivatives using candidate sol
